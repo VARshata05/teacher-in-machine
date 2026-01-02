@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="kn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kids Word Master</title>
+
+<style>
+body{
+  margin:0;
+  font-family:'Comic Sans MS',cursive;
+  background:#f5f7ff;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:100vh;
+}
+.app{
+  width:420px;
+  background:white;
+  border-radius:28px;
+  padding:20px;
+  box-shadow:0 25px 50px rgba(0,0,0,.15);
+  border:6px solid #fde047;
+  text-align:center;
+  position:relative;
+}
+.hidden{display:none}
+
+/* HEADER */
+#task-header{font-size:18px;font-weight:bold;color:#475569}
+#mode-header{
+  display:inline-block;
+  margin:8px auto;
+  padding:6px 16px;
+  background:#eef2ff;
+  color:#3730a3;
+  border-radius:20px;
+  font-weight:bold;
+}
+
+/* STATS */
+.stats{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.progress-bg{
+  width:65%;
+  height:12px;
+  background:#e5e7eb;
+  border-radius:10px;
+  overflow:hidden;
+}
+#progress-bar{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,#22c55e,#4ade80);
+  transition:.5s;
+}
+
+/* IMAGE */
+.image-card{
+  width:200px;
+  height:200px;
+  margin:12px auto;
+  background:#f8fafc;
+  border-radius:20px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+#word-image{max-width:150px;max-height:150px}
+
+/* TEXT */
+#word-text{font-size:44px;font-weight:bold}
+#phonetic-text{font-size:22px;color:#2563eb}
+#meaning-box{
+  margin-top:6px;
+  background:#f1f5f9;
+  display:inline-block;
+  padding:8px 18px;
+  border-radius:16px;
+  font-size:20px;
+  font-weight:bold;
+}
+
+/* MIC */
+#mic{
+  font-size:42px;
+  margin:10px 0;
+  color:#94a3b8;
+}
+#mic.active{
+  color:#f97316;
+  animation:pulse 1s infinite;
+}
+@keyframes pulse{50%{transform:scale(1.25)}}
+
+/* FEEDBACK */
+#feedback{
+  min-height:48px;
+  font-size:18px;
+  font-weight:bold;
+}
+.success{color:#16a34a}
+.error{color:#ef4444}
+
+/* OVERLAY 
+#overlay{
+  position:absolute;
+  inset:0;
+  background:rgba(255,255,255,.95);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  font-size:22px;
+  font-weight:bold;
+  z-index:10;
+}
+#overlay span{animation:pop .6s ease;color:#16a34a}
+@keyframes pop{0%{transform:scale(.8);opacity:0}100%{transform:scale(1);opacity:1}}*/
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+  <div class="stats">
+    <div>⭐ <span id="stars">0</span></div>
+    <div class="progress-bg"><div id="progress-bar"></div></div>
+  </div>
+
+  <div id="task-header">ಕಾರ್ಯ 1</div>
+  <div id="mode-header">ಕೇಳಿ ಮತ್ತು ಹೇಳಿ</div>
+
+  <div class="image-card">
+    <img id="word-image">
+  </div>
+
+  <div id="word-text"></div>
+  <div id="phonetic-text"></div>
+  <div id="meaning-box"><span id="meaning-text"></span></div>
+
+  <div id="mic">🎤</div>
+  <div id="feedback">ಸಿದ್ಧರಾಗಿ...</div>
+
+  <div id="overlay" class="hidden">
+    <span id="overlay-text"></span>
+  </div>
+
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded",()=>{
+
+/* -------- ELEMENTS -------- */
+const taskHeader=document.getElementById("task-header");
+const modeHeader=document.getElementById("mode-header");
+const wordText=document.getElementById("word-text");
+const phoneticText=document.getElementById("phonetic-text");
+const meaningText=document.getElementById("meaning-text");
+const wordImage=document.getElementById("word-image");
+const progressBar=document.getElementById("progress-bar");
+const feedback=document.getElementById("feedback");
+const mic=document.getElementById("mic");
+const overlay=document.getElementById("overlay");
+const overlayText=document.getElementById("overlay-text");
+const starsEl=document.getElementById("stars");
+
+/* -------- MESSAGES -------- */
+const MSG={
+  silent:"ನೀವು ಹೇಳಲಿಲ್ಲ… ಮತ್ತೆ ಕೇಳಿ ಹೇಳಿ 😊",
+  wrong:"ಇದು ಸರಿಯಲ್ಲ… ಇನ್ನೊಮ್ಮೆ ಪ್ರಯತ್ನಿಸಿ 👍",
+  correct:"ಚೆನ್ನಾಗಿದೆ! ⭐",
+  listenDone:"ಚೆನ್ನಾಗಿದೆ! ಈಗ ಓದಿ ಹೇಳೋಣ 🎉",
+  taskDone:n=>`ಅಭಿನಂದನೆಗಳು! ಕಾರ್ಯ ${n} ಮುಗಿದಿದೆ ⭐`
+};
+
+/* -------- DATA -------- */
+let allWords=[],tasks=[];
+let task=0,index=0,stars=0;
+let mode="listen";
+let silenceTimer=null;
+let uiTimer=null;
+
+/* -------- LOAD WORDS -------- */
+fetch("words.json")
+.then(r=>r.json())
+.then(d=>{
+  allWords=d;
+  for(let i=0;i<d.length;i+=5)
+    tasks.push(d.slice(i,i+5));
+  updateUI();
+});
+
+/* -------- SPEECH -------- */
+const rec=new (window.SpeechRecognition||window.webkitSpeechRecognition)();
+rec.lang="en-US";
+
+/* -------- OVERLAY -------- */
+function showOverlay(msg){
+  overlayText.innerText=msg;
+  overlay.classList.remove("hidden");
+  setTimeout(()=>overlay.classList.add("hidden"),1800);
+}
+
+/* -------- UI UPDATE -------- */
+function updateUI(){
+  if(task>=tasks.length){
+    showOverlay("🎉 ಎಲ್ಲ ಕಾರ್ಯಗಳು ಮುಗಿದಿವೆ!");
+    return;
+  }
+
+  const w=tasks[task][index];
+
+  taskHeader.innerText=`ಕಾರ್ಯ ${task+1}`;
+  modeHeader.innerText=mode==="listen"?"ಕೇಳಿ ಮತ್ತು ಹೇಳಿ":"ಓದಿ ಮತ್ತು ಹೇಳಿ";
+
+  wordText.innerText=w.word.toUpperCase();
+  phoneticText.innerText=w.phonetic||"";
+  meaningText.innerText=w.meaning||"";
+
+  wordImage.onerror=()=>wordImage.src="https://cdn-icons-png.flaticon.com/512/1828/1828884.png";
+  wordImage.src=w.img;
+
+  progressBar.style.width=((task*5+index)/allWords.length)*100+"%";
+
+  feedback.innerText="ಸಿದ್ಧರಾಗಿ...";
+
+  clearTimeout(uiTimer);
+  uiTimer=setTimeout(startStep,800);
+}
+
+/* -------- FLOW -------- */
+function startStep(){
+  if(mode==="listen"){
+    const u=new SpeechSynthesisUtterance(tasks[task][index].word);
+    u.onend=startListen;
+    speechSynthesis.speak(u);
+  }else{
+    startListen();
+  }
+}
+
+function startListen(){
+  try{
+    mic.classList.add("active");
+    rec.start();
+
+    clearTimeout(silenceTimer);
+    silenceTimer=setTimeout(()=>{
+      rec.stop();
+      mic.classList.remove("active");
+      feedback.innerText=MSG.silent;
+      setTimeout(startStep,1500);
+    },3000);
+
+  }catch(e){}
+}
+
+rec.onresult=e=>{
+  clearTimeout(silenceTimer);
+  mic.classList.remove("active");
+
+  const said=e.results[0][0].transcript.toLowerCase();
+  const target=tasks[task][index].word.toLowerCase();
+
+  if(said.includes(target)){
+    stars++;
+    starsEl.innerText=stars;
+    feedback.innerHTML=`<span class="success">${MSG.correct}</span>`;
+    index++;
+
+    if(index===5){
+      index=0;
+      if(mode==="listen"){
+        mode="read";
+        showOverlay(MSG.listenDone);
+      }else{
+        mode="listen";
+        task++;
+        showOverlay(MSG.taskDone(task));
+      }
+    }
+    setTimeout(updateUI,1800);
+  }else{
+    feedback.innerHTML=`<span class="error">${MSG.wrong}</span>`;
+    setTimeout(startStep,1500);
+  }
+};
+
+rec.onerror=()=>mic.classList.remove("active");
+
+});
+</script>
+
+</body>
+</html>
